@@ -80,8 +80,8 @@ void detect_linux(CpuCacheInfo& out) {
 
     out.logical_cpus = std::max(1u, std::thread::hardware_concurrency());
 
-    // Linux exposes the actual cache topology per logical CPU. Read CPU0;
-    // heterogeneous systems are handled by the x86 CPUID path where possible.
+    // Linux exposes cache topology through sysfs. Read CPU0's hierarchy,
+    // while CPUID supplies the x86 cache geometry when available.
     for (int index = 0; index < 16; ++index) {
         std::string base = "/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(index) + "/";
         std::ifstream level_file(base + "level");
@@ -116,7 +116,8 @@ CpuCacheInfo CpuCacheInfo::detect() {
 #if defined(__linux__)
     detect_linux(out);
 #endif
-    if (out.line_bytes == 0) out.line_bytes = 64;
+    // No cache-size constants are assumed. A platform that cannot report a
+    // cache line simply disables range prefetching instead of guessing.
     if (out.cpu_name.empty()) out.cpu_name = "unknown";
     return out;
 }
@@ -125,10 +126,6 @@ CachePlan CachePlan::detect() {
     CachePlan p;
     p.cpu = CpuCacheInfo::detect();
     p.cache_line_bytes = p.cpu.line_bytes;
-
-    // Use fractions of detected capacity as working-set targets. These are
-    // deliberately not cache-size constants: different CPUs produce different
-    // budgets at runtime.
     p.l1_tile_bytes = p.cpu.l1_data_bytes ? p.cpu.l1_data_bytes / 2 : 0;
     p.l2_window_bytes = p.cpu.l2_bytes ? p.cpu.l2_bytes / 2 : 0;
     p.l3_window_bytes = p.cpu.l3_bytes ? p.cpu.l3_bytes / 2 : 0;
