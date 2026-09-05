@@ -10,7 +10,6 @@ class OpenCLBackend {
 public:
     OpenCLBackend();
     ~OpenCLBackend();
-
     OpenCLBackend(const OpenCLBackend&) = delete;
     OpenCLBackend& operator=(const OpenCLBackend&) = delete;
 
@@ -18,19 +17,12 @@ public:
     void shutdown() noexcept;
     bool available() const noexcept { return ready_; }
     const std::string& device_name() const noexcept { return device_name_; }
+    bool matvec_f32(const float*, const float*, float*, std::size_t, std::size_t, std::string* = nullptr);
+    bool matvec_f16(const std::uint16_t*, const float*, float*, std::size_t, std::size_t, std::string* = nullptr);
 
-    bool matvec_f32(const float* weights, const float* input, float* output,
-                    std::size_t rows, std::size_t cols, std::string* error = nullptr);
-    bool matvec_f16(const std::uint16_t* weights, const float* input, float* output,
-                    std::size_t rows, std::size_t cols, std::string* error = nullptr);
-
-private:
+    // Kept public for the tiny dynamic OpenCL ABI implementation. No OpenCL
+    // headers are required on CPU-only systems.
     struct Api;
-    bool run_matvec(void* kernel, const void* weights, std::size_t weights_bytes,
-                    const float* input, std::size_t input_bytes, float* output,
-                    std::size_t output_bytes, std::size_t rows, std::size_t cols,
-                    std::string* error);
-
     Api* api_ = nullptr;
     void* library_ = nullptr;
     void* context_ = nullptr;
@@ -41,9 +33,7 @@ private:
     void* weights_buf_ = nullptr;
     void* input_buf_ = nullptr;
     void* output_buf_ = nullptr;
-    std::size_t weights_capacity_ = 0;
-    std::size_t input_capacity_ = 0;
-    std::size_t output_capacity_ = 0;
+    std::size_t weights_capacity_ = 0, input_capacity_ = 0, output_capacity_ = 0;
     bool ready_ = false;
     std::string device_name_;
 };
