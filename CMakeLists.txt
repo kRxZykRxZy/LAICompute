@@ -5,22 +5,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 option(LAIC_ENABLE_NATIVE "Enable compiler-native CPU optimizations" ON)
 option(LAIC_BUILD_TESTS "Build tests" ON)
-option(LAIC_ENABLE_QPU "Build VideoCore IV QPU support" ON)
-
 add_library(laicore
     src/tensor.cpp src/tensor16.cpp src/half.cpp src/cpu.cpp src/matmul.cpp
     src/prefetch.cpp src/cache.cpp src/pipeline.cpp src/engine.cpp
-    src/compute_dot.cpp src/quant_v2.cpp src/gguf.cpp src/tokenizer.cpp src/inference_v2.cpp
-    src/execution.cpp)
-
-if(LAIC_ENABLE_QPU)
-    target_sources(laicore PRIVATE src/qpu_engine.cpp src/qpu_kernel.cpp src/qpu_opencl.cpp src/qpu_inference.cpp)
-    target_compile_definitions(laicore PUBLIC LAIC_ENABLE_QPU=1)
-    if(UNIX)
-        target_link_libraries(laicore PRIVATE dl)
-    endif()
-endif()
-
+    src/compute_dot.cpp src/quant_v2.cpp src/gguf.cpp src/tokenizer.cpp src/inference_v2.cpp)
 target_include_directories(laicore PUBLIC include)
 target_compile_features(laicore PUBLIC cxx_std_17)
 if(LAIC_ENABLE_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
