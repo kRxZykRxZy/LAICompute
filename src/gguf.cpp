@@ -5,69 +5,16 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
-
 namespace laic { namespace {
-class Reader { const uint8_t* p_; const uint8_t* e_; public:
-    Reader(const uint8_t* p,size_t n):p_(p),e_(p+n){}
-    void need(size_t n){ if(n>static_cast<size_t>(e_-p_)) throw std::runtime_error("invalid/truncated GGUF"); }
-    uint8_t u8(){need(1);return *p_++;} int8_t i8(){return static_cast<int8_t>(u8());}
-    uint16_t u16(){need(2);uint16_t v=p_[0]|(uint16_t(p_[1])<<8);p_+=2;return v;}
-    int16_t i16(){return static_cast<int16_t>(u16());}
-    uint32_t u32(){need(4);uint32_t v=uint32_t(p_[0])|(uint32_t(p_[1])<<8)|(uint32_t(p_[2])<<16)|(uint32_t(p_[3])<<24);p_+=4;return v;}
-    int32_t i32(){return static_cast<int32_t>(u32());}
-    uint64_t u64(){need(8);uint64_t v=0;for(int i=0;i<8;++i)v|=uint64_t(p_[i])<<(8*i);p_+=8;return v;}
-    int64_t i64(){return static_cast<int64_t>(u64());}
-    float f32(){uint32_t x=u32();float v;std::memcpy(&v,&x,4);return v;}
-    double f64(){uint64_t x=u64();double v;std::memcpy(&v,&x,8);return v;}
-    bool b(){return u8()!=0;}
-    std::string str(){uint64_t n=u64();if(n>static_cast<uint64_t>(e_-p_))throw std::runtime_error("invalid GGUF string");std::string s(reinterpret_cast<const char*>(p_),static_cast<size_t>(n));p_+=n;return s;}
-    size_t pos(const uint8_t* base)const{return static_cast<size_t>(p_-base);}
-};
-size_t align_up(size_t x,size_t a){return a?((x+a-1)/a)*a:x;}
-GgufValue value(Reader& r,uint32_t t,const uint8_t* base){
-    (void)base;
-    switch(t){
-    case 0:return uint64_t(r.u8()); case 1:return int64_t(r.i8()); case 2:return uint64_t(r.u16()); case 3:return int64_t(r.i16());
-    case 4:return uint64_t(r.u32()); case 5:return int64_t(r.i32()); case 6:return double(r.f32()); case 7:return r.b();
-    case 8:return r.str(); case 10:return r.u64(); case 11:return r.i64(); case 12:return r.f64();
-    case 9:{ uint32_t et=r.u32();uint64_t n=r.u64();if(n>100000000ULL)throw std::runtime_error("GGUF array too large");
-        if(et==8){std::vector<std::string> a;a.reserve(size_t(n));for(uint64_t i=0;i<n;++i)a.push_back(r.str());return a;}
-        std::vector<uint64_t> a;a.reserve(size_t(n));for(uint64_t i=0;i<n;++i){GgufValue v=value(r,et,base);if(auto p=std::get_if<uint64_t>(&v))a.push_back(*p);else if(auto p2=std::get_if<int64_t>(&v))a.push_back(static_cast<uint64_t>(*p2));else throw std::runtime_error("unsupported GGUF array type");}return a; }
-    default:throw std::runtime_error("unsupported GGUF metadata type");}
-}
+class Reader{const uint8_t*p_;const uint8_t*e_;public:Reader(const uint8_t*p,size_t n):p_(p),e_(p+n){}void need(size_t n){if(n>size_t(e_-p_))throw std::runtime_error("invalid/truncated GGUF");}uint8_t u8(){need(1);return*p_++;}int8_t i8(){return int8_t(u8());}uint16_t u16(){need(2);uint16_t v=p_[0]|(uint16_t(p_[1])<<8);p_+=2;return v;}int16_t i16(){return int16_t(u16());}uint32_t u32(){need(4);uint32_t v=uint32_t(p_[0])|(uint32_t(p_[1])<<8)|(uint32_t(p_[2])<<16)|(uint32_t(p_[3])<<24);p_+=4;return v;}int32_t i32(){return int32_t(u32());}uint64_t u64(){need(8);uint64_t v=0;for(int i=0;i<8;++i)v|=uint64_t(p_[i])<<(8*i);p_+=8;return v;}int64_t i64(){return int64_t(u64());}float f32(){uint32_t x=u32();float v;std::memcpy(&v,&x,4);return v;}double f64(){uint64_t x=u64();double v;std::memcpy(&v,&x,8);return v;}bool b(){return u8()!=0;}std::string str(){uint64_t n=u64();if(n>uint64_t(e_-p_))throw std::runtime_error("invalid GGUF string");std::string s(reinterpret_cast<const char*>(p_),size_t(n));p_+=n;return s;}size_t pos(const uint8_t*base)const{return size_t(p_-base);}};
+GgufValue value(Reader&r,uint32_t t,const uint8_t*base){(void)base;switch(t){case 0:return uint64_t(r.u8());case 1:return int64_t(r.i8());case 2:return uint64_t(r.u16());case 3:return int64_t(r.i16());case 4:return uint64_t(r.u32());case 5:return int64_t(r.i32());case 6:return double(r.f32());case 7:return r.b();case 8:return r.str();case 10:return r.u64();case 11:return r.i64();case 12:return r.f64();case 9:{uint32_t et=r.u32();uint64_t n=r.u64();if(n>100000000ULL)throw std::runtime_error("GGUF array too large");if(et==8){std::vector<std::string>a;a.reserve(size_t(n));for(uint64_t i=0;i<n;++i)a.push_back(r.str());return a;}std::vector<uint64_t>a;a.reserve(size_t(n));for(uint64_t i=0;i<n;++i){GgufValue v=value(r,et,base);if(auto p=std::get_if<uint64_t>(&v))a.push_back(*p);else if(auto p2=std::get_if<int64_t>(&v))a.push_back(uint64_t(*p2));else throw std::runtime_error("unsupported GGUF array type");}return a;}default:throw std::runtime_error("unsupported GGUF metadata type");}}
 size_t block_size(GgmlType t){switch(t){case GgmlType::F32:return 4;case GgmlType::F16:return 2;case GgmlType::Q4_0:return 18;case GgmlType::Q4_1:return 20;case GgmlType::Q5_0:return 22;case GgmlType::Q5_1:return 24;case GgmlType::Q8_0:return 34;}throw std::runtime_error("unsupported GGML type");}
-size_t block_elems(GgmlType t){return t==GgmlType::F32||t==GgmlType::F16?1:32;}
-float half_at(const uint8_t* p){uint16_t x=uint16_t(p[0])|(uint16_t(p[1])<<8);return Half::from_bits(x).to_float();}
+float half_at(const uint8_t*p){return Half::from_bits(uint16_t(p[0])|(uint16_t(p[1])<<8)).to_float();}
 }}
-namespace laic {
+namespace laic{
 size_t GgufTensor::elements()const noexcept{size_t n=1;for(auto d:shape){if(d>std::numeric_limits<size_t>::max()/n)return 0;n*=size_t(d);}return n;}
 size_t GgufTensor::bytes()const noexcept{size_t n=elements();if(type==GgmlType::F32)return n*4;if(type==GgmlType::F16)return n*2;return (n+31)/32*block_size(type);}
-float GgufTensor::value(size_t i)const{
-    if(!data||i>=elements())throw std::out_of_range("GGUF tensor index");
-    if(type==GgmlType::F32){float v;std::memcpy(&v,data+i*4,4);return v;}
-    if(type==GgmlType::F16)return half_at(data+i*2);
-    size_t b=i/32,o=i%32;const uint8_t* q=data+b*block_size(type);float d=half_at(q);
-    if(type==GgmlType::Q8_0)return d*static_cast<float>(static_cast<int8_t>(q[2+o]));
-    if(type==GgmlType::Q4_0){uint8_t x=q[2+o/2];int v=(o&1)?(x>>4):(x&15);return d*float(v-8);}
-    throw std::runtime_error("GGUF tensor type not yet supported by inference");
-}
-void GgufModel::load(const std::string& path){
-    std::ifstream f(path,std::ios::binary|std::ios::ate);if(!f)throw std::runtime_error("cannot open GGUF: "+path);
-    auto sz=f.tellg();if(sz<0)throw std::runtime_error("cannot size GGUF");file_.resize(size_t(sz));f.seekg(0);f.read(reinterpret_cast<char*>(file_.data()),sz);if(!f)throw std::runtime_error("cannot read GGUF");
-    meta_.clear();tensors_.clear();path_=path;Reader r(file_.data(),file_.size());
-    if(r.u32()!=0x46554747U)throw std::runtime_error("bad GGUF magic");uint32_t ver=r.u32();if(ver<2||ver>3)throw std::runtime_error("unsupported GGUF version");
-    uint64_t nt=r.u64(),nm=r.u64();if(nt>1000000||nm>1000000)throw std::runtime_error("unreasonable GGUF counts");
-    for(uint64_t i=0;i<nm;++i){std::string k=r.str();uint32_t t=r.u32();meta_.emplace(std::move(k),value(r,t,file_.data()));}
-    struct Info{std::string name;std::vector<uint64_t> shape;GgmlType type;uint64_t off;};std::vector<Info> infos;infos.reserve(size_t(nt));
-    for(uint64_t i=0;i<nt;++i){Info x;x.name=r.str();uint32_t nd=r.u32();if(nd>8)throw std::runtime_error("invalid GGUF rank");x.shape.resize(nd);for(auto& d:x.shape)d=r.u64();x.type=static_cast<GgmlType>(r.u32());x.off=r.u64();(void)block_size(x.type);infos.push_back(std::move(x));}
-    uint64_t align=u64("general.alignment",32);if(align==0||align>4096)align=32;size_t data_start=align_up(r.pos(file_.data()),size_t(align));
-    for(auto& x:infos){if(x.off>file_.size()-data_start)throw std::runtime_error("GGUF tensor offset out of range");GgufTensor t;t.name=x.name;t.shape=std::move(x.shape);t.type=x.type;t.offset=x.off;t.data=file_.data()+data_start+size_t(x.off);if(t.bytes()>file_.size()-(data_start+size_t(x.off)))throw std::runtime_error("GGUF tensor data out of range");tensors_.emplace(t.name,std::move(t));}
-}
-const GgufTensor& GgufModel::tensor(const std::string& n)const{auto it=tensors_.find(n);if(it==tensors_.end())throw std::runtime_error("missing tensor: "+n);return it->second;}
-bool GgufModel::has_tensor(const std::string& n)const noexcept{return tensors_.find(n)!=tensors_.end();}
-const GgufValue* GgufModel::metadata(const std::string& k)const noexcept{auto it=meta_.find(k);return it==meta_.end()?nullptr:&it->second;}
-uint64_t GgufModel::u64(const std::string& k,uint64_t fb)const{auto v=metadata(k);if(!v)return fb;if(auto p=std::get_if<uint64_t>(v))return *p;if(auto p2=std::get_if<int64_t>(v))return uint64_t(*p2);return fb;}
-double GgufModel::f64(const std::string& k,double fb)const{auto v=metadata(k);if(!v)return fb;if(auto p=std::get_if<double>(v))return *p;if(auto p2=std::get_if<uint64_t>(v))return double(*p2);return fb;}
-std::string GgufModel::str(const std::string& k,const std::string& fb)const{auto v=metadata(k);if(!v)return fb;if(auto p=std::get_if<std::string>(v))return *p;return fb;}
-const std::vector<std::string>& GgufModel::strings(const std::string& k)const{auto v=metadata(k);if(!v)return empty_strings_;if(auto p=std::get_if<std::vector<std::string>>(v))return *p;return empty_strings_;}
+float GgufTensor::value(size_t i)const{if(!data||i>=elements())throw std::out_of_range("GGUF tensor index");if(type==GgmlType::F32){float v;std::memcpy(&v,data+i*4,4);return v;}if(type==GgmlType::F16)return half_at(data+i*2);size_t b=i/32,o=i%32;const uint8_t*q=data+b*block_size(type);float d=half_at(q);if(type==GgmlType::Q8_0)return d*float(int8_t(q[2+o]));if(type==GgmlType::Q4_0){uint8_t z=q[2+o/2];int v=(o&1)?z>>4:z&15;return d*float(v-8);}throw std::runtime_error("GGUF tensor type not yet supported by inference: "+std::to_string(uint32_t(type)));}
+void GgufModel::load(const std::string&path){std::ifstream f(path,std::ios::binary|std::ios::ate);if(!f)throw std::runtime_error("cannot open GGUF: "+path);auto sz=f.tellg();if(sz<0)throw std::runtime_error("cannot size GGUF");file_.resize(size_t(sz));f.seekg(0);f.read(reinterpret_cast<char*>(file_.data()),std::streamsize(file_.size()));if(!f)throw std::runtime_error("cannot read GGUF");meta_.clear();tensors_.clear();path_=path;Reader r(file_.data(),file_.size());if(r.u32()!=0x46554747U)throw std::runtime_error("bad GGUF magic");uint32_t ver=r.u32();if(ver<2||ver>3)throw std::runtime_error("unsupported GGUF version");uint64_t nt=r.u64(),nm=r.u64();if(nt>1000000||nm>1000000)throw std::runtime_error("unreasonable GGUF counts");for(uint64_t i=0;i<nm;++i){std::string k=r.str();uint32_t t=r.u32();meta_.emplace(std::move(k),value(r,t,file_.data()));}struct Info{std::string name;std::vector<uint64_t>shape;GgmlType type;uint64_t off;};std::vector<Info>infos;infos.reserve(size_t(nt));for(uint64_t i=0;i<nt;++i){Info x;x.name=r.str();uint32_t nd=r.u32();if(nd>8)throw std::runtime_error("invalid GGUF rank");x.shape.resize(nd);for(auto&d:x.shape)d=r.u64();x.type=GgmlType(r.u32());x.off=r.u64();(void)block_size(x.type);infos.push_back(std::move(x));}uint64_t align=u64("general.alignment",32);if(align==0||align>4096)align=32;size_t raw=r.pos(file_.data());size_t data_start=raw>std::numeric_limits<size_t>::max()-size_t(align-1)?raw:((raw+size_t(align)-1)/size_t(align))*size_t(align);if(data_start>file_.size())throw std::runtime_error("GGUF tensor data starts past end of file");for(auto&x:infos){if(x.off>uint64_t(file_.size()-data_start))throw std::runtime_error("GGUF tensor offset out of range");size_t off=size_t(x.off),base=data_start+off;GgufTensor t;t.name=x.name;t.shape=std::move(x.shape);t.type=x.type;t.offset=x.off;t.data=file_.data()+base;if(t.bytes()>file_.size()-base)throw std::runtime_error("GGUF tensor data out of range");tensors_.emplace(t.name,std::move(t));}}
+const GgufTensor&GgufModel::tensor(const std::string&n)const{auto it=tensors_.find(n);if(it==tensors_.end())throw std::runtime_error("missing tensor: "+n);return it->second;}bool GgufModel::has_tensor(const std::string&n)const noexcept{return tensors_.find(n)!=tensors_.end();}const GgufValue*GgufModel::metadata(const std::string&k)const noexcept{auto it=meta_.find(k);return it==meta_.end()?nullptr:&it->second;}uint64_t GgufModel::u64(const std::string&k,uint64_t fb)const{auto v=metadata(k);if(!v)return fb;if(auto p=std::get_if<uint64_t>(v))return*p;if(auto p=std::get_if<int64_t>(v))return uint64_t(*p);if(auto p=std::get_if<bool>(v))return*p?1:0;return fb;}double GgufModel::f64(const std::string&k,double fb)const{auto v=metadata(k);if(!v)return fb;if(auto p=std::get_if<double>(v))return*p;if(auto p=std::get_if<uint64_t>(v))return double(*p);return fb;}std::string GgufModel::str(const std::string&k,const std::string&fb)const{auto v=metadata(k);if(!v)return fb;if(auto p=std::get_if<std::string>(v))return*p;return fb;}const std::vector<std::string>&GgufModel::strings(const std::string&k)const{auto v=metadata(k);if(!v)return empty_strings_;if(auto p=std::get_if<std::vector<std::string>>(v))return*p;return empty_strings_;}
 } // namespace laic
