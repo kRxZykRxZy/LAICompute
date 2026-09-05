@@ -13,9 +13,9 @@ struct CpuFeatures {
 
 struct CpuInfo {
     std::string name;
-    unsigned logical_cpus = 1;
-    unsigned physical_cores = 1;
-    size_t cache_line = 64;
+    unsigned logical_cpus = 0;
+    unsigned physical_cores = 0;
+    size_t cache_line = 0;
     size_t l1d = 0;
     size_t l1i = 0;
     size_t l2 = 0;
