@@ -8,11 +8,11 @@ option(LAIC_BUILD_TESTS "Build tests" ON)
 add_library(laicore
     src/tensor.cpp src/tensor16.cpp src/half.cpp src/cpu.cpp src/matmul.cpp
     src/prefetch.cpp src/cache.cpp src/pipeline.cpp src/engine.cpp
-    src/gguf.cpp src/tokenizer.cpp src/inference.cpp)
+    src/compute_dot.cpp src/gguf.cpp src/tokenizer.cpp src/inference.cpp)
 target_include_directories(laicore PUBLIC include)
 target_compile_features(laicore PUBLIC cxx_std_17)
 if(LAIC_ENABLE_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(laicore PRIVATE -march=native -O3 -ffast-math)
+    target_compile_options(laicore PRIVATE -march=native -O3 -ffast-math -fomit-frame-pointer -ftree-vectorize -ftree-slp-vectorize)
 else()
     target_compile_options(laicore PRIVATE -O3)
 endif()
