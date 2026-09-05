@@ -13,8 +13,11 @@ add_library(laicore
     src/compute_dot.cpp src/quant_v2.cpp src/gguf.cpp src/tokenizer.cpp src/inference_v2.cpp)
 
 if(LAIC_ENABLE_QPU)
-    target_sources(laicore PRIVATE src/qpu_engine.cpp)
+    target_sources(laicore PRIVATE src/qpu_engine.cpp src/qpu_kernel.cpp src/qpu_opencl.cpp)
     target_compile_definitions(laicore PUBLIC LAIC_ENABLE_QPU=1)
+    if(UNIX)
+        target_link_libraries(laicore PRIVATE dl)
+    endif()
 endif()
 
 target_include_directories(laicore PUBLIC include)
