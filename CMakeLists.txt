@@ -1,36 +1,34 @@
 cmake_minimum_required(VERSION 3.16)
 project(LAICompute VERSION 0.1.0 LANGUAGES CXX)
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-option(LAIC_ENABLE_NATIVE "Enable native CPU optimizations" ON)
+option(LAIC_ENABLE_NATIVE "Enable compiler-native CPU optimizations" ON)
 option(LAIC_BUILD_TESTS "Build tests" ON)
-
 add_library(laicore
     src/tensor.cpp
+    src/tensor16.cpp
+    src/half.cpp
+    src/cpu.cpp
     src/matmul.cpp
     src/prefetch.cpp
     src/cache.cpp
-    src/engine.cpp
-)
+    src/pipeline.cpp
+    src/engine.cpp)
 target_include_directories(laicore PUBLIC include)
 target_compile_features(laicore PUBLIC cxx_std_17)
-
 if(LAIC_ENABLE_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(laicore PRIVATE -march=native -O3 -ffast-math)
+else()
+    target_compile_options(laicore PRIVATE -O3)
 endif()
-
 add_executable(laic_bench bench/bench.cpp)
 target_link_libraries(laic_bench PRIVATE laicore)
-
 if(LAIC_BUILD_TESTS)
     enable_testing()
     add_executable(laic_tests tests/test_core.cpp)
     target_link_libraries(laic_tests PRIVATE laicore)
     add_test(NAME laic_tests COMMAND laic_tests)
 endif()
-
 install(TARGETS laicore laic_bench)
 install(DIRECTORY include/ DESTINATION include)
