@@ -1,0 +1,40 @@
+name: LAICompute CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.compiler }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cxx: g++
+          - compiler: clang
+            cxx: clang++
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install compiler
+        if: matrix.compiler == 'clang'
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Configure
+        env:
+          CXX: ${{ matrix.cxx }}
+        run: cmake -S . -B build -DLAIC_ENABLE_NATIVE=OFF -DLAIC_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Smoke benchmark
+        run: ./build/laic_bench
