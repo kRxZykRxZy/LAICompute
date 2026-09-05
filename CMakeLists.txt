@@ -6,15 +6,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(LAIC_ENABLE_NATIVE "Enable compiler-native CPU optimizations" ON)
 option(LAIC_BUILD_TESTS "Build tests" ON)
 add_library(laicore
-    src/tensor.cpp
-    src/tensor16.cpp
-    src/half.cpp
-    src/cpu.cpp
-    src/matmul.cpp
-    src/prefetch.cpp
-    src/cache.cpp
-    src/pipeline.cpp
-    src/engine.cpp)
+    src/tensor.cpp src/tensor16.cpp src/half.cpp src/cpu.cpp src/matmul.cpp
+    src/prefetch.cpp src/cache.cpp src/pipeline.cpp src/engine.cpp
+    src/gguf.cpp src/tokenizer.cpp src/inference.cpp)
 target_include_directories(laicore PUBLIC include)
 target_compile_features(laicore PUBLIC cxx_std_17)
 if(LAIC_ENABLE_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -24,11 +18,13 @@ else()
 endif()
 add_executable(laic_bench bench/bench.cpp)
 target_link_libraries(laic_bench PRIVATE laicore)
+add_executable(laic_generate tools/generate.cpp)
+target_link_libraries(laic_generate PRIVATE laicore)
 if(LAIC_BUILD_TESTS)
     enable_testing()
     add_executable(laic_tests tests/test_core.cpp)
     target_link_libraries(laic_tests PRIVATE laicore)
     add_test(NAME laic_tests COMMAND laic_tests)
 endif()
-install(TARGETS laicore laic_bench)
+install(TARGETS laicore laic_bench laic_generate)
 install(DIRECTORY include/ DESTINATION include)
