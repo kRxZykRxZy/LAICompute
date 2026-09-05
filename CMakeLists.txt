@@ -10,10 +10,11 @@ option(LAIC_ENABLE_QPU "Build VideoCore IV QPU support" ON)
 add_library(laicore
     src/tensor.cpp src/tensor16.cpp src/half.cpp src/cpu.cpp src/matmul.cpp
     src/prefetch.cpp src/cache.cpp src/pipeline.cpp src/engine.cpp
-    src/compute_dot.cpp src/quant_v2.cpp src/gguf.cpp src/tokenizer.cpp src/inference_v2.cpp)
+    src/compute_dot.cpp src/quant_v2.cpp src/gguf.cpp src/tokenizer.cpp src/inference_v2.cpp
+    src/execution.cpp)
 
 if(LAIC_ENABLE_QPU)
-    target_sources(laicore PRIVATE src/qpu_engine.cpp src/qpu_kernel.cpp src/qpu_opencl.cpp)
+    target_sources(laicore PRIVATE src/qpu_engine.cpp src/qpu_kernel.cpp src/qpu_opencl.cpp src/qpu_inference.cpp)
     target_compile_definitions(laicore PUBLIC LAIC_ENABLE_QPU=1)
     if(UNIX)
         target_link_libraries(laicore PRIVATE dl)
