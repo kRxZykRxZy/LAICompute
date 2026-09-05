@@ -1,19 +1,9 @@
+#include "laic/cpu.hpp"
+#include "laic/cache.hpp"
 #include "laic/matmul.hpp"
+#include "laic/half.hpp"
 #include <chrono>
 #include <cmath>
-#include <iostream>
+#include <cstdio>
 #include <vector>
-
-int main() {
-    constexpr size_t N = 512;
-    std::vector<float> A(N*N), B(N*N), C(N*N);
-    for (size_t i=0;i<A.size();++i) { A[i]=std::sin(float(i)*0.001f); B[i]=std::cos(float(i)*0.001f); }
-    laic::MatmulConfig cfg;
-    const auto t0 = std::chrono::steady_clock::now();
-    laic::matmul_tiled(A.data(), B.data(), C.data(), N, N, N, cfg);
-    const auto t1 = std::chrono::steady_clock::now();
-    const double sec = std::chrono::duration<double>(t1-t0).count();
-    const double gflops = (2.0*N*N*N) / sec / 1e9;
-    double checksum=0; for (float x:C) checksum += x;
-    std::cout << "512x512 tiled matmul\n" << "time: " << sec << " s\n" << "GFLOP/s: " << gflops << "\n" << "checksum: " << checksum << "\n";
-}
+int main(){using namespace laic;CpuInfo cpu=CpuInfo::detect();CachePlan plan=CachePlan::detect();std::printf("LAICompute v0.1 benchmark\nCPU: %s\nlogical=%u physical=%u\nL1D=%zu KB L1I=%zu KB L2=%zu KB L3=%zu KB line=%zu B\nAVX=%d F16C=%d AVX2=%d FMA=%d\nWorking-set targets: L1=%zu KB L2=%zu KB L3=%zu KB\n\n",cpu.name.c_str(),cpu.logical_cpus,cpu.physical_cores,cpu.l1d/1024,cpu.l1i/1024,cpu.l2/1024,cpu.l3/1024,cpu.cache_line,cpu.features.avx,cpu.features.f16c,cpu.features.avx2,cpu.features.fma,plan.l1_tile_bytes/1024,plan.l2_window_bytes/1024,plan.l3_window_bytes/1024);const size_t M=256,N=256,K=256;std::vector<float>A(M*K),B(K*N),C(M*N);for(size_t i=0;i<A.size();++i)A[i]=std::sin(float(i)*.001f);for(size_t i=0;i<B.size();++i)B[i]=std::cos(float(i)*.001f);for(int i=0;i<2;i++)matmul_tiled(A.data(),B.data(),C.data(),M,N,K);const int iters=5;auto t0=std::chrono::steady_clock::now();for(int i=0;i<iters;i++)matmul_tiled(A.data(),B.data(),C.data(),M,N,K);auto t1=std::chrono::steady_clock::now();double sec=std::chrono::duration<double>(t1-t0).count()/iters;double gf=2.0*M*N*K/sec/1e9;double sum=0;for(float x:C)sum+=x;std::printf("FP32 tiled: %.3f ms, %.2f GFLOP/s, checksum %.6f\n",sec*1000,gf,sum);std::vector<Half>HA(M*K),HB(K*N);for(size_t i=0;i<HA.size();i++)HA[i]=Half(A[i]);for(size_t i=0;i<HB.size();i++)HB[i]=Half(B[i]);t0=std::chrono::steady_clock::now();for(int i=0;i<iters;i++)matmul_fp16(HA.data(),HB.data(),C.data(),M,N,K);t1=std::chrono::steady_clock::now();sec=std::chrono::duration<double>(t1-t0).count()/iters;gf=2.0*M*N*K/sec/1e9;sum=0;for(float x:C)sum+=x;std::printf("FP16 storage/FP32 compute: %.3f ms, %.2f GFLOP/s, checksum %.6f\n",sec*1000,gf,sum);std::printf("Linux cache counters: perf stat -e cycles,instructions,cache-references,cache-misses,LLC-load-misses ./laic_bench\n");}
