@@ -6,7 +6,6 @@
 #include <vector>
 
 namespace laic::qpu {
-namespace {
 
 using cl_int = int;
 using cl_uint = unsigned int;
@@ -59,6 +58,8 @@ struct OpenCLBackend::Api {
     cl_int (*ReleaseCommandQueue)(cl_command_queue) = nullptr;
     cl_int (*ReleaseContext)(cl_context) = nullptr;
 };
+
+namespace {
 
 static const char* kSource = R"CLC(
 inline float half_to_float(ushort h) {
@@ -173,6 +174,7 @@ bool OpenCLBackend::initialize(std::string* error) {
         }
         if (device) break;
     }
+    (void)chosen;
     if (!device) { seterr(error, "no VC4CL VideoCore GPU device found"); shutdown(); return false; }
 
     cl_int rc = CL_SUCCESS;
