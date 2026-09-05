@@ -1,5 +1,4 @@
 #include "laic/execution.hpp"
-#include <algorithm>
 #include <stdexcept>
 namespace laic {
 const char* execution_mode_name(ExecutionMode m) noexcept { switch(m){case ExecutionMode::CPU:return "CPU";case ExecutionMode::GPU:return "GPU";case ExecutionMode::BOTH:return "BOTH";default:return "AUTO";} }
@@ -19,5 +18,5 @@ bool ExecutionRuntime::gpu_available() const noexcept{return gpu_&&gpu_->gpu_rea
 std::string ExecutionRuntime::gpu_device() const{return gpu_?gpu_->device_name():std::string{};}
 size_t ExecutionRuntime::qpu_matvecs() const noexcept{return gpu_?gpu_->qpu_matvecs():0;}
 size_t ExecutionRuntime::cpu_matvecs() const noexcept{return gpu_?gpu_->cpu_matvecs():0;}
-const Gpt2Tokenizer& ExecutionRuntime::tokenizer() const {if(use_gpu: false){} if(gpu_&&gpu_->gpu_ready())return gpu_->tokenizer();if(cpu_)return cpu_->tokenizer();throw std::runtime_error("no model loaded");}
+const Gpt2Tokenizer& ExecutionRuntime::tokenizer() const {if(gpu_&&gpu_->gpu_ready()&&mode_!=ExecutionMode::CPU)return gpu_->tokenizer();if(cpu_)return cpu_->tokenizer();throw std::runtime_error("no model loaded");}
 } // namespace laic
