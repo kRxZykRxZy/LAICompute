@@ -24,11 +24,11 @@ using cl_platform_id = void*;
 using cl_device_id = void*;
 
 constexpr cl_int CL_SUCCESS = 0;
-constexpr cl_device_type CL_DEVICE_TYPE_ALL = ~0ull;
-constexpr cl_device_type CL_DEVICE_TYPE_GPU = (1ull << 2);
-constexpr cl_mem_flags CL_MEM_READ_ONLY = 1ull << 2;
-constexpr cl_mem_flags CL_MEM_WRITE_ONLY = 1ull << 1;
-constexpr cl_mem_flags CL_MEM_READ_WRITE = 1ull << 0;
+constexpr cl_device_type CL_DEVICE_TYPE_ALL = static_cast<cl_device_type>(~cl_device_type(0));
+constexpr cl_device_type CL_DEVICE_TYPE_GPU = static_cast<cl_device_type>(1ull << 2);
+constexpr cl_mem_flags CL_MEM_READ_ONLY = static_cast<cl_mem_flags>(1ull << 2);
+constexpr cl_mem_flags CL_MEM_WRITE_ONLY = static_cast<cl_mem_flags>(1ull << 1);
+constexpr cl_mem_flags CL_MEM_READ_WRITE = static_cast<cl_mem_flags>(1ull << 0);
 constexpr cl_uint CL_PLATFORM_VENDOR = 0x0903;
 constexpr cl_uint CL_DEVICE_NAME = 0x102B;
 constexpr cl_uint CL_DEVICE_VENDOR = 0x102C;
@@ -132,8 +132,6 @@ __kernel void laic_matvec_f16(__global const ushort* w, __global const float* x,
 
 static void seterr(std::string* e, const char* s) { if (e) *e = s; }
 
-#define LOAD(api, name) do { *(void**)(&((api).name)) = dlsym(lib, "cl" #name); if (!(api).name) return false; } while (0)
-
 } // namespace
 
 OpenCLBackend::OpenCLBackend() = default;
@@ -142,40 +140,88 @@ OpenCLBackend::~OpenCLBackend() { shutdown(); }
 bool OpenCLBackend::initialize(std::string* error) {
     shutdown();
     const char* names[] = {"libOpenCL.so", "libOpenCL.so.1"};
-    for (const char* n : names) { library_ = dlopen(n, RTLD_NOW | RTLD_LOCAL); if (library_) break; }
+    for (const char* n : names) {
+        library_ = dlopen(n, RTLD_NOW | RTLD_LOCAL);
+        if (library_) break;
+    }
     if (!library_) { seterr(error, "libOpenCL not found"); return false; }
+
     api_ = new Api();
     Api& a = *api_;
-    LOAD(a, GetPlatformIDs); LOAD(a, GetPlatformInfo); LOAD(a, GetDeviceIDs); LOAD(a, GetDeviceInfo);
-    LOAD(a, CreateContext); LOAD(a, CreateCommandQueue); LOAD(a, CreateProgramWithSource);
-    LOAD(a, BuildProgram); LOAD(a, CreateKernel); LOAD(a, CreateBuffer); LOAD(a, EnqueueWriteBuffer);
-    LOAD(a, SetKernelArg); LOAD(a, EnqueueNDRangeKernel); LOAD(a, EnqueueReadBuffer); LOAD(a, Finish);
-    LOAD(a, ReleaseMemObject); LOAD(a, ReleaseKernel); LOAD(a, ReleaseProgram); LOAD(a, ReleaseCommandQueue); LOAD(a, ReleaseContext);
+
+    // Keep the loader handle explicit here. The old macro lived in the
+    // anonymous namespace and could not see initialize()'s local `lib`.
+#define LOAD(api, handle, name) \
+    do { *(void**)(&((api).name)) = dlsym((handle), "cl" #name); \
+         if (!(api).name) { seterr(error, "missing OpenCL symbol: cl" #name); shutdown(); return false; } } while (0)
+
+    LOAD(a, library_, GetPlatformIDs);
+    LOAD(a, library_, GetPlatformInfo);
+    LOAD(a, library_, GetDeviceIDs);
+    LOAD(a, library_, GetDeviceInfo);
+    LOAD(a, library_, CreateContext);
+    LOAD(a, library_, CreateCommandQueue);
+    LOAD(a, library_, CreateProgramWithSource);
+    LOAD(a, library_, BuildProgram);
+    LOAD(a, library_, CreateKernel);
+    LOAD(a, library_, CreateBuffer);
+    LOAD(a, library_, EnqueueWriteBuffer);
+    LOAD(a, library_, SetKernelArg);
+    LOAD(a, library_, EnqueueNDRangeKernel);
+    LOAD(a, library_, EnqueueReadBuffer);
+    LOAD(a, library_, Finish);
+    LOAD(a, library_, ReleaseMemObject);
+    LOAD(a, library_, ReleaseKernel);
+    LOAD(a, library_, ReleaseProgram);
+    LOAD(a, library_, ReleaseCommandQueue);
+    LOAD(a, library_, ReleaseContext);
+
+#undef LOAD
 
     cl_uint np = 0;
-    if (a.GetPlatformIDs(0, nullptr, &np) != CL_SUCCESS || !np) { seterr(error, "no OpenCL platforms"); shutdown(); return false; }
+    if (a.GetPlatformIDs(0, nullptr, &np) != CL_SUCCESS || !np) {
+        seterr(error, "no OpenCL platforms");
+        shutdown();
+        return false;
+    }
+
     std::vector<cl_platform_id> ps(np);
     a.GetPlatformIDs(np, ps.data(), nullptr);
-    cl_platform_id chosen = nullptr; cl_device_id device = nullptr;
+    cl_platform_id chosen = nullptr;
+    cl_device_id device = nullptr;
+    std::size_t sz = 0;
+
     for (auto p : ps) {
         cl_uint nd = 0;
         if (a.GetDeviceIDs(p, CL_DEVICE_TYPE_GPU, 0, nullptr, &nd) != CL_SUCCESS || !nd) continue;
         std::vector<cl_device_id> ds(nd);
         a.GetDeviceIDs(p, CL_DEVICE_TYPE_GPU, nd, ds.data(), nullptr);
-        char vendor[256] = {}; std::size_t sz = 0;
+        char vendor[256] = {};
+        sz = 0;
         a.GetPlatformInfo(p, CL_PLATFORM_VENDOR, sizeof(vendor)-1, vendor, &sz);
         std::string v(vendor);
         for (auto d : ds) {
-            char name[256] = {}; a.GetDeviceInfo(d, CL_DEVICE_NAME, sizeof(name)-1, name, &sz);
+            char name[256] = {};
+            sz = 0;
+            a.GetDeviceInfo(d, CL_DEVICE_NAME, sizeof(name)-1, name, &sz);
             std::string dn(name);
-            if (v.find("VC4CL") != std::string::npos || dn.find("VideoCore") != std::string::npos || dn.find("VC4") != std::string::npos) {
-                chosen = p; device = d; break;
+            if (v.find("VC4CL") != std::string::npos ||
+                dn.find("VideoCore") != std::string::npos ||
+                dn.find("VC4") != std::string::npos) {
+                chosen = p;
+                device = d;
+                break;
             }
         }
         if (device) break;
     }
+
     (void)chosen;
-    if (!device) { seterr(error, "no VC4CL VideoCore GPU device found"); shutdown(); return false; }
+    if (!device) {
+        seterr(error, "no VC4CL VideoCore GPU device found");
+        shutdown();
+        return false;
+    }
 
     cl_int rc = CL_SUCCESS;
     context_ = a.CreateContext(nullptr, 1, &device, nullptr, nullptr, &rc);
@@ -190,7 +236,10 @@ bool OpenCLBackend::initialize(std::string* error) {
     kernel_f32_ = a.CreateKernel(static_cast<cl_program>(program_), "laic_matvec_f32", &rc);
     kernel_f16_ = a.CreateKernel(static_cast<cl_program>(program_), "laic_matvec_f16", &rc);
     if (rc != CL_SUCCESS || !kernel_f32_ || !kernel_f16_) { seterr(error, "failed to create QPU kernels"); shutdown(); return false; }
-    char name[256] = {}; a.GetDeviceInfo(device, CL_DEVICE_NAME, sizeof(name)-1, name, &sz); device_name_ = name;
+    char name[256] = {};
+    sz = 0;
+    a.GetDeviceInfo(device, CL_DEVICE_NAME, sizeof(name)-1, name, &sz);
+    device_name_ = name;
     ready_ = true;
     return true;
 }
@@ -208,46 +257,73 @@ void OpenCLBackend::shutdown() noexcept {
         if (context_) a.ReleaseContext(static_cast<cl_context>(context_));
     }
     weights_buf_=input_buf_=output_buf_=kernel_f32_=kernel_f16_=program_=queue_=context_=nullptr;
-    if (library_) dlclose(library_); library_=nullptr;
-    delete api_; api_=nullptr; ready_=false; weights_capacity_=input_capacity_=output_capacity_=0; device_name_.clear();
+    if (library_) dlclose(library_);
+    library_=nullptr;
+    delete api_;
+    api_=nullptr;
+    ready_=false;
+    weights_capacity_=input_capacity_=output_capacity_=0;
+    device_name_.clear();
 }
 
 static bool run(OpenCLBackend* self, void* kernel, const void* weights, std::size_t wb,
                 const float* x, std::size_t xb, float* y, std::size_t yb,
                 std::size_t rows, std::size_t cols, std::string* error) {
     if (!self || !self->available()) { seterr(error, "QPU backend unavailable"); return false; }
-    auto& a = *self->api_; cl_int rc = CL_SUCCESS;
+    auto& a = *self->api_;
+    cl_int rc = CL_SUCCESS;
     auto ensure = [&](void*& b, std::size_t& cap, cl_mem_flags flags, std::size_t need) {
         if (cap >= need && b) return true;
         if (b) a.ReleaseMemObject(static_cast<cl_mem>(b));
         b = a.CreateBuffer(static_cast<cl_context>(self->context_), flags, need, nullptr, &rc);
         if (rc != CL_SUCCESS || !b) return false;
-        cap = need; return true;
+        cap = need;
+        return true;
     };
     if (!ensure(self->weights_buf_, self->weights_capacity_, CL_MEM_READ_ONLY, wb) ||
         !ensure(self->input_buf_, self->input_capacity_, CL_MEM_READ_ONLY, xb) ||
-        !ensure(self->output_buf_, self->output_capacity_, CL_MEM_WRITE_ONLY, yb)) { seterr(error,"QPU buffer allocation failed"); return false; }
+        !ensure(self->output_buf_, self->output_capacity_, CL_MEM_WRITE_ONLY, yb)) {
+        seterr(error,"QPU buffer allocation failed");
+        return false;
+    }
     if (a.EnqueueWriteBuffer(static_cast<cl_command_queue>(self->queue_), static_cast<cl_mem>(self->weights_buf_), CL_TRUE, 0, wb, weights, 0,nullptr,nullptr) != CL_SUCCESS ||
-        a.EnqueueWriteBuffer(static_cast<cl_command_queue>(self->queue_), static_cast<cl_mem>(self->input_buf_), CL_TRUE, 0, xb, x, 0,nullptr,nullptr) != CL_SUCCESS) { seterr(error,"QPU upload failed"); return false; }
-    cl_uint r = static_cast<cl_uint>(rows), c = static_cast<cl_uint>(cols);
-    if (a.SetKernelArg(static_cast<cl_kernel>(kernel),0,sizeof(cl_mem),&self->weights_buf_) != CL_SUCCESS ||
-        a.SetKernelArg(static_cast<cl_kernel>(kernel),1,sizeof(cl_mem),&self->input_buf_) != CL_SUCCESS ||
-        a.SetKernelArg(static_cast<cl_kernel>(kernel),2,sizeof(cl_mem),&self->output_buf_) != CL_SUCCESS ||
-        a.SetKernelArg(static_cast<cl_kernel>(kernel),3,sizeof(r),&r) != CL_SUCCESS ||
-        a.SetKernelArg(static_cast<cl_kernel>(kernel),4,sizeof(c),&c) != CL_SUCCESS) { seterr(error,"QPU kernel arguments failed"); return false; }
+        a.EnqueueWriteBuffer(static_cast<cl_command_queue>(self->queue_), static_cast<cl_mem>(self->input_buf_), CL_TRUE, 0, xb, x, 0,nullptr,nullptr) != CL_SUCCESS) {
+        seterr(error,"QPU upload failed");
+        return false;
+    }
+    if (a.SetKernelArg(static_cast<cl_kernel>(kernel), 0, sizeof(cl_mem), &self->weights_buf_) != CL_SUCCESS ||
+        a.SetKernelArg(static_cast<cl_kernel>(kernel), 1, sizeof(cl_mem), &self->input_buf_) != CL_SUCCESS ||
+        a.SetKernelArg(static_cast<cl_kernel>(kernel), 2, sizeof(cl_mem), &self->output_buf_) != CL_SUCCESS) {
+        seterr(error,"QPU kernel argument setup failed");
+        return false;
+    }
+    cl_uint ur = static_cast<cl_uint>(rows);
+    cl_uint uc = static_cast<cl_uint>(cols);
+    if (a.SetKernelArg(static_cast<cl_kernel>(kernel), 3, sizeof(ur), &ur) != CL_SUCCESS ||
+        a.SetKernelArg(static_cast<cl_kernel>(kernel), 4, sizeof(uc), &uc) != CL_SUCCESS) {
+        seterr(error,"QPU kernel dimension setup failed");
+        return false;
+    }
     std::size_t global = rows;
-    if (a.EnqueueNDRangeKernel(static_cast<cl_command_queue>(self->queue_), static_cast<cl_kernel>(kernel), 1,nullptr,&global,nullptr,0,nullptr,nullptr) != CL_SUCCESS ||
+    if (a.EnqueueNDRangeKernel(static_cast<cl_command_queue>(self->queue_), static_cast<cl_kernel>(kernel), 1, nullptr, &global, nullptr, 0,nullptr,nullptr) != CL_SUCCESS ||
         a.Finish(static_cast<cl_command_queue>(self->queue_)) != CL_SUCCESS ||
-        a.EnqueueReadBuffer(static_cast<cl_command_queue>(self->queue_), static_cast<cl_mem>(self->output_buf_), CL_TRUE,0,yb,y,0,nullptr,nullptr) != CL_SUCCESS) { seterr(error,"QPU execution failed"); return false; }
+        a.EnqueueReadBuffer(static_cast<cl_command_queue>(self->queue_), static_cast<cl_mem>(self->output_buf_), CL_TRUE, 0, yb, y, 0,nullptr,nullptr) != CL_SUCCESS) {
+        seterr(error,"QPU execution failed");
+        return false;
+    }
     return true;
 }
 
-bool OpenCLBackend::matvec_f32(const float* w,const float* x,float* y,std::size_t rows,std::size_t cols,std::string* e) {
-    return run(this,kernel_f32_,w,rows*cols*sizeof(float),x,cols*sizeof(float),y,rows*sizeof(float),rows,cols,e);
+bool OpenCLBackend::matvec_f32(const float* weights, const float* x, float* y,
+                               std::size_t rows, std::size_t cols, std::string* error) {
+    if (!weights || !x || !y || rows == 0 || cols == 0) { seterr(error, "invalid F32 matvec arguments"); return false; }
+    return run(this, kernel_f32_, weights, rows * cols * sizeof(float), x, cols * sizeof(float), y, rows * sizeof(float), rows, cols, error);
 }
 
-bool OpenCLBackend::matvec_f16(const std::uint16_t* w,const float* x,float* y,std::size_t rows,std::size_t cols,std::string* e) {
-    return run(this,kernel_f16_,w,rows*cols*sizeof(std::uint16_t),x,cols*sizeof(float),y,rows*sizeof(float),rows,cols,e);
+bool OpenCLBackend::matvec_f16(const std::uint16_t* weights, const float* x, float* y,
+                               std::size_t rows, std::size_t cols, std::string* error) {
+    if (!weights || !x || !y || rows == 0 || cols == 0) { seterr(error, "invalid F16 matvec arguments"); return false; }
+    return run(this, kernel_f16_, weights, rows * cols * sizeof(std::uint16_t), x, cols * sizeof(float), y, rows * sizeof(float), rows, cols, error);
 }
 
 } // namespace laic::qpu
