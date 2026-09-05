@@ -21,12 +21,16 @@ public:
 
     bool matvec_f32(const float* weights, const float* input, float* output,
                     std::size_t rows, std::size_t cols, std::string* error = nullptr);
-
     bool matvec_f16(const std::uint16_t* weights, const float* input, float* output,
                     std::size_t rows, std::size_t cols, std::string* error = nullptr);
 
 private:
     struct Api;
+    bool run_matvec(void* kernel, const void* weights, std::size_t weights_bytes,
+                    const float* input, std::size_t input_bytes, float* output,
+                    std::size_t output_bytes, std::size_t rows, std::size_t cols,
+                    std::string* error);
+
     Api* api_ = nullptr;
     void* library_ = nullptr;
     void* context_ = nullptr;
