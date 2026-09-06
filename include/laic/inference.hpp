@@ -2,6 +2,7 @@
 #include "laic/gguf.hpp"
 #include "laic/tokenizer.hpp"
 #include "laic/cache.hpp"
+#include "laic/videocore.hpp"
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -13,6 +14,9 @@ class LlamaRuntime {
 public:
     using TokenCallback=std::function<bool(uint32_t)>;
     void load(const std::string& path);
+    void set_backend(videocore::Backend backend) noexcept { backend_=backend; }
+    videocore::Backend backend() const noexcept { return backend_; }
+    bool gpu_available() const noexcept;
     std::vector<uint32_t> generate_ids(const std::string& prompt,const GenerationConfig& cfg={});
     std::vector<uint32_t> generate_ids(const std::string& prompt,const GenerationConfig& cfg,const TokenCallback& callback);
     std::string generate(const std::string& prompt,const GenerationConfig& cfg={});
@@ -23,7 +27,9 @@ public:
 private:
     struct LayerCache{std::vector<float> k,v;};
     GgufModel model_; Gpt2Tokenizer tokenizer_; std::vector<LayerCache> cache_; CachePlan cache_plan_;
+    std::unique_ptr<class gpu_Engine_placeholder> unused_gpu_placeholder_;
     std::atomic<bool> stop_requested_{false};
+    videocore::Backend backend_=videocore::Backend::CPU;
     size_t hidden_=0,layers_=0,heads_=0,kv_heads_=0,head_dim_=0,ffn_=0,ctx_=0,rope_dim_=0,pos_=0;
     float eps_=1e-5f,theta_=10000.f;
     std::vector<float> embedding(uint32_t id)const;
@@ -31,5 +37,7 @@ private:
     void norm(std::vector<float>&x,const GgufTensor&w)const;
     std::vector<float> step(uint32_t token);
     uint32_t sample(const std::vector<float>&logits,const GenerationConfig&cfg,const std::vector<uint32_t>&history)const;
+    struct GpuHolder;
+    std::unique_ptr<GpuHolder> gpu_;
 };
 }
