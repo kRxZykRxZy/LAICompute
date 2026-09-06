@@ -24,7 +24,9 @@ public:
     std::vector<uint32_t> generate_ids(const std::string& prompt,const GenerationConfig& cfg={});
     std::vector<uint32_t> generate_ids(const std::string& prompt,const GenerationConfig& cfg,const TokenCallback& callback);
     std::string generate(const std::string& prompt,const GenerationConfig& cfg={});
+    std::string generate(const std::string& prompt,size_t max_tokens) { GenerationConfig cfg; cfg.max_tokens=max_tokens; return generate(prompt,cfg); }
     void request_stop() noexcept { stop_requested_.store(true,std::memory_order_relaxed); }
+    void stop() noexcept { request_stop(); }
     bool stop_requested()const noexcept{return stop_requested_.load(std::memory_order_relaxed);}
     const GgufModel& model()const noexcept{return model_;}
     const Gpt2Tokenizer& tokenizer()const noexcept{return tokenizer_;}
