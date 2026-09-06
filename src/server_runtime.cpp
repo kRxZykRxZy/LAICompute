@@ -54,25 +54,26 @@ struct ApiServer::Impl {
     std::string gpu_stats(){auto*d=rt?rt->gpu_stats():nullptr;bool av=d&&rt&&rt->gpu_available();if(!av)return "{\"available\":false,\"reason\":"+jsonq(gpu.compute_available?"GPU engine not active for the current model/backend":"VideoCore compute runtime unavailable")+"}";double ms=double(d->gpu_ns)/1e6;double gf=d->gpu_ns?double(d->gpu_flops)/double(d->gpu_ns):0.0;return "{\"available\":true,\"name\":"+jsonq(gpu.name)+",\"runtime\":"+jsonq(gpu.runtime)+",\"qpus\":"+std::to_string(gpu.qpus)+",\"clock_mhz\":"+std::to_string(d->clock_mhz?d->clock_mhz:gpu.clock_mhz)+",\"theoretical_gflops\":"+std::to_string(gpu.theoretical_gflops)+",\"kernel_ms\":"+std::to_string(ms)+",\"gflops\":"+std::to_string(gf)+",\"gpu_calls\":"+std::to_string(d->matvec_gpu_calls)+",\"fallbacks\":"+std::to_string(d->matvec_fallbacks)+",\"workgroup_size\":"+std::to_string(d->selected_work_group_size)+",\"max_workgroup_size\":"+std::to_string(d->max_work_group_size)+",\"preferred_multiple\":"+std::to_string(d->preferred_work_group_multiple)+",\"compute_units\":"+std::to_string(d->compute_units)+"}";}
     std::string gpu_detect(){
         auto rt=videocore::probe_runtime(gpu);
+        auto btf=[](bool v)->const char*{return v?"true":"false";};
         std::string o="{";
-        o+="\"present\":"+(gpu.present?"true":"false");
-        o+=",\"generation\":"+jsonq(videocore::generation_name(gpu.generation));
-        o+=",\"compute_available\":"+(gpu.compute_available?"true":"false");
-        o+=",\"runtime_api\":"+jsonq(rt.api);
-        o+=",\"runtime_device\":"+jsonq(rt.device);
-        o+=",\"runtime_detail\":"+jsonq(rt.detail);
-        o+=",\"runtime_available\":"+(rt.available?"true":"false");
-        o+=",\"qpus\":"+std::to_string(gpu.qpus);
-        o+=",\"clock_mhz\":"+std::to_string(gpu.clock_mhz);
-        o+=",\"theoretical_gflops\":"+std::to_string(gpu.theoretical_gflops);
-        o+=",\"runtime_name\":"+jsonq(gpu.name);
-        o+=",\"runtime_string\":"+jsonq(gpu.runtime);
+        o+="\"present\":"; o+=btf(gpu.present);
+        o+=",\"generation\":"; o+=jsonq(videocore::generation_name(gpu.generation));
+        o+=",\"compute_available\":"; o+=btf(gpu.compute_available);
+        o+=",\"runtime_api\":"; o+=jsonq(rt.api);
+        o+=",\"runtime_device\":"; o+=jsonq(rt.device);
+        o+=",\"runtime_detail\":"; o+=jsonq(rt.detail);
+        o+=",\"runtime_available\":"; o+=btf(rt.available);
+        o+=",\"qpus\":"; o+=std::to_string(gpu.qpus);
+        o+=",\"clock_mhz\":"; o+=std::to_string(gpu.clock_mhz);
+        o+=",\"theoretical_gflops\":"; o+=std::to_string(gpu.theoretical_gflops);
+        o+=",\"runtime_name\":"; o+=jsonq(gpu.name);
+        o+=",\"runtime_string\":"; o+=jsonq(gpu.runtime);
         o+=",\"all_devices\":[";
         for(size_t i=0;i<rt.all_devices.size();i++){if(i)o+=",";o+=jsonq(rt.all_devices[i]);}
         o+="]";
-        o+=",\"all_device_versions\":"+jsonq(rt.all_device_versions);
-        o+=",\"opencl_build\":" + std::to_string(LAIC_HAVE_OPENCL);
-        o+=",\"vulkan_build\":" + std::to_string(LAIC_HAVE_VULKAN);
+        o+=",\"all_device_versions\":"; o+=jsonq(rt.all_device_versions);
+        o+=",\"opencl_build\":"; o+=std::to_string(LAIC_HAVE_OPENCL);
+        o+=",\"vulkan_build\":"; o+=std::to_string(LAIC_HAVE_VULKAN);
         o+="}";
         return o;
     }
