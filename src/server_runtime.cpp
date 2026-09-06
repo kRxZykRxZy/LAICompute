@@ -17,7 +17,8 @@
 #include <thread>
 #include <unistd.h>
 
-namespace laic { namespace {
+namespace laic {
+namespace {
 
 std::string jsonq(const std::string& s) { std::string o="\""; for(unsigned char c:s){ if(c=='"'||c=='\\')o+='\\',o+=char(c); else if(c=='\n')o+="\\n"; else if(c=='\r')o+="\\r"; else if(c=='\t')o+="\\t"; else if(c<0x20){char h[7];std::snprintf(h,sizeof(h),"\\u%04x",c);o+=h;} else o+=char(c);} return o+'"'; }
 std::string js(const std::string& b,const std::string& k){auto p=b.find("\""+k+"\"");if(p==std::string::npos)return{};p=b.find(':',p);p=b.find('"',p);if(p==std::string::npos)return{};std::string o;for(++p;p<b.size()&&b[p]!='"';++p){if(b[p]=='\\'&&p+1<b.size())++p;o+=b[p];}return o;}
@@ -38,6 +39,8 @@ std::string backend_panel(const videocore::DeviceInfo& d){
     html += "<script>(function(){const s=document.getElementById('backendSelect'),st=document.getElementById('gpuStats'),bi=document.getElementById('gpuInfo'),bb=document.getElementById('gpuBench');if(!s)return;const saved=localStorage.getItem('laic-backend');if(saved&&[...s.options].some(o=>o.value===saved&&!o.disabled))s.value=saved;async function choose(){localStorage.setItem('laic-backend',s.value);try{await fetch('/api/backend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({backend:s.value})})}catch(e){}}s.addEventListener('change',choose);window.LAIC_BACKEND=()=>s.value;async function stats(){try{const r=await fetch('/api/gpu/stats'),d=await r.json();if(d.available){const util=d.theoretical_gflops>0?Math.min(100,d.gflops/d.theoretical_gflops*100):0;st.innerHTML='Kernel: '+d.kernel_ms.toFixed(2)+' ms · '+d.gflops.toFixed(2)+' GFLOP/s<br>Peak utilization: '+util.toFixed(1)+'% · GPU calls: '+d.gpu_calls+' · CPU fallbacks: '+d.fallbacks+'<br>Workgroup: '+d.workgroup_size+' / '+d.max_workgroup_size+' · compute units: '+d.compute_units+' · clock: '+d.clock_mhz+' MHz';bi.textContent=d.name+' · '+d.runtime+' · '+d.qpus+' QPUs · theoretical '+d.theoretical_gflops.toFixed(2)+' GFLOP/s'}else st.textContent=d.reason||'GPU runtime unavailable'}catch(e){}}async function bench(){if(bb.disabled)return;bb.disabled=true;bb.textContent='Benchmarking…';try{const r=await fetch('/api/benchmark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({backend:s.value,max_tokens:32})}),d=await r.json();if(!r.ok)throw Error(d.error||'Benchmark failed');st.innerHTML='Benchmark: <b>'+d.tokens_per_sec.toFixed(2)+' tok/s</b> · '+d.elapsed_ms.toFixed(0)+' ms · '+d.tokens+' tokens';if(d.gpu_gflops!==undefined)st.innerHTML+=' · '+d.gpu_gflops.toFixed(2)+' GFLOP/s';}catch(e){st.textContent=e.message}finally{bb.disabled=false;bb.textContent='Run GPU benchmark'}}bb.addEventListener('click',bench);stats();setInterval(stats,1000)})();</script>";
     return html;
 }
+
+} // namespace
 
 struct ApiServer::Impl {
     uint16_t port; std::string dir; int fd=-1; std::atomic<bool> running{false}; std::mutex mu; std::unique_ptr<LlamaRuntime> rt; std::string loaded; std::atomic<bool> generating{false}; std::atomic<size_t> tokens{0}; std::atomic<double> tps{0}; std::atomic<double> cpu_percent{0}; std::chrono::steady_clock::time_point started; std::mutex cpu_mu; uint64_t prev_cpu_total=0,prev_cpu_idle=0; videocore::DeviceInfo gpu=videocore::detect(); videocore::Backend selected_backend=videocore::Backend::CPU;
@@ -63,4 +66,4 @@ struct ApiServer::Impl {
 
 ApiServer::ApiServer(uint16_t p,std::string d):impl_(new Impl(p,std::move(d))){} ApiServer::~ApiServer()=default; void ApiServer::run(){impl_->run();} void ApiServer::stop()noexcept{impl_->stop();}
 
-}}
+}
