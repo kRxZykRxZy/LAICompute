@@ -20,6 +20,7 @@ public:
     videocore::Backend backend() const noexcept { return backend_; }
     bool gpu_available() const noexcept { return gpu_ && gpu_->available(); }
     const gpu::Stats* gpu_stats() const noexcept { return gpu_ ? &gpu_->stats() : nullptr; }
+    void reset_gpu_stats() noexcept { if(gpu_) gpu_->reset_stats(); }
     std::vector<uint32_t> generate_ids(const std::string& prompt,const GenerationConfig& cfg={});
     std::vector<uint32_t> generate_ids(const std::string& prompt,const GenerationConfig& cfg,const TokenCallback& callback);
     std::string generate(const std::string& prompt,const GenerationConfig& cfg={});
