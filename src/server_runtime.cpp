@@ -26,6 +26,7 @@ std::string js(const std::string& b,const std::string& k){auto p=b.find("\""+k+"
 size_t jn(const std::string& b,const std::string& k,size_t d){auto p=b.find("\""+k+"\"");if(p==std::string::npos)return d;p=b.find(':',p);try{return std::stoull(b.substr(p+1));}catch(...){return d;}}
 std::string reply(int code,const std::string& data,const std::string& type="application/json"){const char* msg=code==200?"OK":code==201?"Created":code==400?"Bad Request":code==404?"Not Found":code==409?"Conflict":"Internal Server Error";return "HTTP/1.1 "+std::to_string(code)+" "+msg+"\r\nContent-Type: "+type+"\r\nContent-Length: "+std::to_string(data.size())+"\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Content-Type,X-Filename\r\nAccess-Control-Allow-Methods: GET,POST,OPTIONS\r\nConnection: close\r\n\r\n"+data;}
 void writeall(int fd,const std::string& s){for(size_t p=0;p<s.size();){ssize_t n=send(fd,s.data()+p,s.size()-p,MSG_NOSIGNAL);if(n<=0)return;p+=size_t(n);}}
+bool ssend(int fd,const std::string& s){for(size_t p=0;p<s.size();){ssize_t n=send(fd,s.data()+p,s.size()-p,MSG_NOSIGNAL);if(n<=0)return false;p+=size_t(n);}return true;}
 std::string header(const std::string& r,const std::string& n){auto p=r.find(n);if(p==std::string::npos)return{};p+=n.size();auto e=r.find("\r\n",p);return r.substr(p,e-p);}
 
 std::string backend_panel(const videocore::DeviceInfo& d){
@@ -78,6 +79,29 @@ struct ApiServer::Impl {
         return o;
     }
     bool begin_generation(LlamaRuntime*&r){std::unique_lock<std::mutex>g(mu);if(!rt||generating)return false;r=rt.get();r->set_backend(selected_backend);r->reset_gpu_stats();generating=true;tokens=0;tps=0;started=std::chrono::steady_clock::now();return true;}void finish_generation(){generating=false;}
+    void stream_chat(int c,const std::string& body){
+        LlamaRuntime* r=nullptr;
+        if(!begin_generation(r)){writeall(c,reply(409,"{\"error\":\"model unavailable or generation already running\"}"));return;}
+        const char* hdr="HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Content-Type,X-Filename\r\nAccess-Control-Allow-Methods: GET,POST,OPTIONS\r\nConnection: close\r\n\r\n";
+        writeall(c,hdr);
+        size_t max_tokens=jn(body,"max_tokens",128);if(!max_tokens)max_tokens=1;
+        auto tempm=jn(body,"temperature_milli",0);
+        std::string message=js(body,"message");if(message.empty())message=js(body,"prompt");if(message.empty())message="Hello";
+        auto t0=std::chrono::steady_clock::now();size_t produced=0;double rate=0.0;
+        try{
+            laic::GenerationConfig cfg;cfg.max_tokens=max_tokens;cfg.temperature=float(tempm)/1000.0f;
+            auto cb=[&](uint32_t id)->bool{std::string tk=r->tokenizer().decode(id);auto t1=std::chrono::steady_clock::now();double ms=std::chrono::duration<double,std::milli>(t1-t0).count();rate=ms>0?double(++produced)*1000.0/ms:0.0;tokens=produced;tps=rate;return ssend(c,"data: {\"token\":"+jsonq(tk)+",\"tokens_per_sec\":"+std::to_string(rate)+"}\n\n");};
+            r->generate_ids(message,cfg,cb);
+            auto t1=std::chrono::steady_clock::now();double ms=std::chrono::duration<double,std::milli>(t1-t0).count();rate=ms>0?double(produced)*1000.0/ms:0.0;tokens=produced;tps=rate;
+            ssend(c,"data: {\"done\":true,\"tokens_per_sec\":"+std::to_string(rate)+"}\n\n");
+        }catch(const std::exception&e){
+            std::string w=e.what();
+            bool st=w.find("stopped")!=std::string::npos;
+            if(st)ssend(c,"data: {\"error\":\"generation stopped\",\"done\":true,\"stopped\":true}\n\n");
+            else ssend(c,"data: {\"error\":"+jsonq(w)+"}\n\n");
+        }
+        finish_generation();
+    }
     void handle(int c){std::string req;char b[8192];size_t want=0;for(;;){ssize_t n=recv(c,b,sizeof(b),0);if(n<=0){close(c);return;}req.append(b,size_t(n));auto hp=req.find("\r\n\r\n");if(hp!=std::string::npos){auto cl=header(req,"Content-Length: ");if(!cl.empty())try{want=std::stoull(cl);}catch(...){want=0;}size_t have=req.size()-hp-4;while(have<want){n=recv(c,b,sizeof(b),0);if(n<=0){close(c);return;}req.append(b,size_t(n));have+=size_t(n);}break;}}std::istringstream q(req);std::string method,path,ver;q>>method>>path>>ver;if(method=="OPTIONS"){writeall(c,reply(200,"{}"));close(c);return;}auto hp=req.find("\r\n\r\n");std::string body=hp==std::string::npos?"":req.substr(hp+4);
         if(method=="GET"&&path=="/"){std::ifstream f("web/index_v2.html");std::string x((std::istreambuf_iterator<char>(f)),{});if(x.empty()){writeall(c,reply(404,"{\"error\":\"web/index_v2.html not found\"}"));close(c);return;}auto marker="<div class=\"side-bottom\">";auto p=x.find(marker);if(p!=std::string::npos)x.insert(p,backend_panel(gpu));auto end=x.rfind("</body>");if(end!=std::string::npos)x.insert(end,"<script>window.LAIC_BACKEND=window.LAIC_BACKEND||(()=>localStorage.getItem('laic-backend')||'cpu');</script>");writeall(c,reply(200,x,"text/html; charset=utf-8"));close(c);return;}
         if(method=="GET"&&path=="/api/status"){writeall(c,reply(200,status()));close(c);return;}if(method=="GET"&&path=="/api/backends"){writeall(c,reply(200,backends()));close(c);return;}if(method=="GET"&&path=="/api/gpu/stats"){writeall(c,reply(200,gpu_stats()));close(c);return;}if(method=="GET"&&path=="/api/gpu/detect"){writeall(c,reply(200,gpu_detect()));close(c);return;}
@@ -86,6 +110,7 @@ struct ApiServer::Impl {
         if(method=="POST"&&(path=="/api/model/load"||path=="/api/models/load")){auto name=js(body,"name");if(name.empty()){writeall(c,reply(400,"{\"error\":\"missing model name\"}"));close(c);return;}try{auto r=std::make_unique<LlamaRuntime>();r->set_backend(selected_backend);r->load(dir+"/"+name);{std::lock_guard<std::mutex>g(mu);rt=std::move(r);loaded=name;}writeall(c,reply(200,"{\"ok\":true}"));}catch(const std::exception&e){writeall(c,reply(500,std::string("{\"error\":")+jsonq(e.what())+"}"));}close(c);return;}
         if(method=="POST"&&(path=="/api/model/unload"||path=="/api/models/unload")){std::lock_guard<std::mutex>g(mu);rt.reset();loaded.clear();writeall(c,reply(200,"{\"ok\":true}"));close(c);return;}
         if(method=="POST"&&path=="/api/models/upload"){auto name=header(req,"X-Filename: ");if(name.empty())name="model.gguf";std::filesystem::path p=std::filesystem::path(dir)/std::filesystem::path(name).filename();if(p.extension()!=".gguf"||body.size()<4){writeall(c,reply(400,"{\"error\":\"GGUF file required\"}"));close(c);return;}std::ofstream o(p,std::ios::binary);o.write(body.data(),std::streamsize(body.size()));o.close();writeall(c,reply(201,"{\"name\":"+jsonq(p.filename().string())+",\"size\":"+std::to_string(body.size())+"}"));close(c);return;}if(method=="GET"&&path=="/api/models"){writeall(c,reply(200,models()));close(c);return;}if(method=="POST"&&path=="/api/stop"){std::lock_guard<std::mutex>g(mu);if(rt)rt->stop();writeall(c,reply(200,"{\"ok\":true}"));close(c);return;}
+        if(method=="POST"&&path=="/api/chat/stream"){stream_chat(c,body);close(c);return;}
         if(method=="POST"&&path=="/api/chat"){LlamaRuntime*r=nullptr;if(!begin_generation(r)){writeall(c,reply(409,"{\"error\":\"model unavailable or generation already running\"}"));close(c);return;}auto prompt=js(body,"prompt");if(prompt.empty())prompt="Hello";auto t0=std::chrono::steady_clock::now();try{auto out=r->generate(prompt,jn(body,"max_tokens",128));auto t1=std::chrono::steady_clock::now();double ms=std::chrono::duration<double,std::milli>(t1-t0).count();tokens=out.size();tps=ms>0?double(tokens.load())*1000.0/ms:0.0;finish_generation();writeall(c,reply(200,"{\"text\":"+jsonq(out)+",\"tokens\":"+std::to_string(tokens.load())+",\"tokens_per_sec\":"+std::to_string(tps.load())+"}"));}catch(const std::exception&e){finish_generation();writeall(c,reply(500,std::string("{\"error\":")+jsonq(e.what())+"}"));}close(c);return;}
         writeall(c,reply(404,"{\"error\":\"not found\"}"));close(c);
     }
