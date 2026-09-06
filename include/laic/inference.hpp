@@ -16,7 +16,7 @@ class LlamaRuntime {
 public:
     using TokenCallback=std::function<bool(uint32_t)>;
     void load(const std::string& path);
-    void set_backend(videocore::Backend backend) noexcept { backend_=backend; }
+    void set_backend(videocore::Backend backend) noexcept { backend_=backend; videocore::set_requested_backend(backend); }
     videocore::Backend backend() const noexcept { return backend_; }
     bool gpu_available() const noexcept { return gpu_ && gpu_->available(); }
     std::vector<uint32_t> generate_ids(const std::string& prompt,const GenerationConfig& cfg={});
@@ -31,7 +31,7 @@ private:
     GgufModel model_; Gpt2Tokenizer tokenizer_; std::vector<LayerCache> cache_; CachePlan cache_plan_;
     std::unique_ptr<gpu::Engine> gpu_;
     std::atomic<bool> stop_requested_{false};
-    videocore::Backend backend_=videocore::Backend::CPU;
+    videocore::Backend backend_=videocore::requested_backend();
     size_t hidden_=0,layers_=0,heads_=0,kv_heads_=0,head_dim_=0,ffn_=0,ctx_=0,rope_dim_=0,pos_=0;
     float eps_=1e-5f,theta_=10000.f;
     std::vector<float> embedding(uint32_t id)const;
