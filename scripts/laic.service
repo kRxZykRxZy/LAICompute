@@ -1,0 +1,24 @@
+[Unit]
+Description=LAICompute LLM inference server (VideoCore QPU compute)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/mnt/drive/LAICompute
+ExecStart=/mnt/drive/LAICompute/build/laic_server 8080 /mnt/drive/LAICompute/models
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=3
+KillMode=process
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+# Relax memory limits so model + inference buffers fit on the Pi 2
+LimitRSS=infinity
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target
