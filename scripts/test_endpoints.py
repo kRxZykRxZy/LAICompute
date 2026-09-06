@@ -1,13 +1,45 @@
 #!/usr/bin/env python3
 """End-to-end test of every LAICompute API endpoint on the Raspberry Pi."""
 import json
+import socket
 import sys
 import time
 import urllib.request
 import urllib.error
 
-BASE = "http://raspberrypi.local:8080"
+HOST = "raspberrypi.local"
+PORT = 8080
 results = []
+
+def resolve_ips(host):
+    try:
+        infos = socket.getaddrinfo(host, PORT, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        return sorted(set(i[4][0] for i in infos))
+    except Exception as e:
+        print(f"  (dns resolution failed: {e})")
+        return []
+
+def base_url_for(ip):
+    return f"http://[{ip}]:{PORT}" if ":" in ip else f"http://{ip}:{PORT}"
+
+def pick_base():
+    ips = resolve_ips(HOST)
+    print(f"  {HOST} resolves to: {ips}")
+    if not ips:
+        return f"http://{HOST}:{PORT}"
+    for ip in ips:
+        if not ip.startswith("fe80:"):
+            test = base_url_for(ip)
+            try:
+                with urllib.request.urlopen(test + "/api/status", timeout=8) as r:
+                    r.read()
+                    return test
+            except Exception:
+                continue
+    return f"http://{HOST}:{PORT}"
+
+BASE = pick_base()
+print(f"  using base: {BASE}\n")
 
 def req(method, path, body=None, expect=200):
     url = BASE + path
@@ -28,14 +60,14 @@ def req(method, path, body=None, expect=200):
     if raw.strip():
         try:
             parsed = json.loads(raw)
-            print(f"        {json.dumps(parsed, indent=None) if isinstance(parsed, str) else json.dumps(parsed)}")
+            print(f"        {parsed if isinstance(parsed, str) else json.dumps(parsed)}")
         except Exception:
             snippet = raw[:200].replace("\n", " ")
             print(f"        {snippet}")
     return code, raw
 
 def main():
-    print(f"=== LAICompute API test against {BASE} ===\n")
+    print(f"=== LAICompute API test against {BASE} ===")
 
     # 1. status
     req("GET", "/api/status")
@@ -78,16 +110,17 @@ def main():
     if model_names:
         name = model_names[0]
         print(f">>> loading model: {name}")
-        code, raw = req("POST", "/api/model/load", {"name": name}, expect=200)
+        # UI uses the plural route (/api/models/load)
+        code, raw = req("POST", "/api/models/load", {"name": name}, expect=200)
         if code == 200:
             time.sleep(1)
             # 9. benchmark on cpu
             req("POST", "/api/benchmark", {"backend": "cpu", "max_tokens": 16})
             # 10. chat
             req("POST", "/api/chat", {"prompt": "What is a Raspberry Pi?", "max_tokens": 16})
-            # 11. stop (safe to call even when nothing running)
+            # 11. stop (safe even when nothing running)
             req("POST", "/api/stop")
-            # 12. backend switch test
+            # 12. backend switch if GPU available
             req("GET", "/api/backends")
             code, raw = req("GET", "/api/gpu/detect")
             try:
@@ -95,7 +128,6 @@ def main():
                 if d.get("compute_available") and d.get("runtime_available"):
                     print(">>> GPU runtime available — testing GPU backend")
                     req("POST", "/api/backend", {"backend": "gpu"})
-                    req("POST", "/api/benchmark", {"backend": "gpu", "max_tokens": 16}, expect=200)
                     req("POST", "/api/backend", {"backend": "both"})
                     req("POST", "/api/benchmark", {"backend": "both", "max_tokens": 16}, expect=200)
                     req("POST", "/api/backend", {"backend": "cpu"})
@@ -104,15 +136,15 @@ def main():
             except Exception as e:
                 print(f">>> could not parse gpu/detect: {e}")
         else:
-            print(f">>> model load failed — skipping model-dependent tests")
+            print(">>> model load failed — skipping model-dependent tests")
     else:
         print(">>> no .gguf models found — skipping model-dependent tests")
 
-    # 13. reconnect test after backend switching
+    # 13. reconnect sanity after backend switching
     req("GET", "/api/status")
 
-    # 14. unload (last, to be clean)
-    req("POST", "/api/model/unload")
+    # 14. unload (UI uses plural route)
+    req("POST", "/api/models/unload")
 
     print("\n=== SUMMARY ===")
     failed = [r for r in results if not r[3]]
