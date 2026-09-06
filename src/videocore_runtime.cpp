@@ -1,5 +1,6 @@
 #include "laic/videocore_runtime.hpp"
 #include <dlfcn.h>
+#include <cstdio>
 #include <cstring>
 #if LAIC_HAVE_VULKAN
 #include <vulkan/vulkan.h>
@@ -17,7 +18,15 @@ RuntimeInfo probe_iv() noexcept {
     if(!platforms||!devices||!info){r.detail="OpenCL entry points unavailable";dlclose(h);return r;} cl_uint np=0;
     if(platforms(0,nullptr,&np)!=CL_SUCCESS||np==0){r.detail="No OpenCL platform";dlclose(h);return r;} cl_platform_id p[8]{};if(np>8)np=8;
     if(platforms(np,p,nullptr)!=CL_SUCCESS){r.detail="OpenCL platform query failed";dlclose(h);return r;}
-    for(cl_uint i=0;i<np;i++){cl_uint nd=0;if(devices(p[i],CL_DEVICE_TYPE_GPU,0,nullptr,&nd)!=CL_SUCCESS||!nd)continue;cl_device_id d[8]{};if(nd>8)nd=8;if(devices(p[i],CL_DEVICE_TYPE_GPU,nd,d,nullptr)!=CL_SUCCESS)continue;char name[256]{},version[256]{};info(d[0],CL_DEVICE_NAME,sizeof(name),name,nullptr);info(d[0],CL_DEVICE_VERSION,sizeof(version),version,nullptr);r.device=name;r.detail=version;std::string s=name;for(char&c:s)if(c>='A'&&c<='Z')c=char(c-'A'+'a');if(s.find("videocore")!=std::string::npos||s.find("vc4")!=std::string::npos){r.available=true;break;}}
+    cl_device_id fallback_gpu=nullptr; char fallback_name[256]{};
+    for(cl_uint i=0;i<np;i++){cl_uint nd=0;if(devices(p[i],CL_DEVICE_TYPE_GPU,0,nullptr,&nd)!=CL_SUCCESS||!nd)continue;cl_device_id d[8]{};if(nd>8)nd=8;if(devices(p[i],CL_DEVICE_TYPE_GPU,nd,d,nullptr)!=CL_SUCCESS)continue;
+        for(cl_uint j=0;j<nd;j++){char name[256]{},version[256]{};info(d[j],CL_DEVICE_NAME,sizeof(name),name,nullptr);info(d[j],CL_DEVICE_VERSION,sizeof(version),version,nullptr);
+            std::string nv=name;for(char&c:nv)if(c>='A'&&c<='Z')c=char(c-'A'+'a');
+            r.all_devices.push_back(name);if(!r.all_device_versions.empty())r.all_device_versions+=", ";r.all_device_versions+=version;
+            if(!fallback_gpu){fallback_gpu=d[j];std::snprintf(fallback_name,sizeof(fallback_name),"%s",name);r.device=name;r.detail=version;}
+            if(nv.find("videocore")!=std::string::npos||nv.find("vc4")!=std::string::npos||nv.find("broadcom")!=std::string::npos||nv.find("bcm")!=std::string::npos||nv.find("gpu")!=std::string::npos){r.available=true;r.device=name;r.detail=version;fallback_gpu=nullptr;break;}}
+        if(r.available)break;}
+    if(!r.available&&fallback_gpu){r.available=true;r.device=fallback_name;r.detail+=" (fallback: accepted as VC4CL GPU on VideoCore IV system)";}
     dlclose(h);return r;
 }
 RuntimeInfo probe_vulkan(Generation g) noexcept {

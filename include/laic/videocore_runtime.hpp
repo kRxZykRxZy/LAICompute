@@ -1,6 +1,7 @@
 #pragma once
 #include "laic/videocore.hpp"
 #include <string>
+#include <vector>
 
 namespace laic::videocore {
 
@@ -10,6 +11,8 @@ struct RuntimeInfo {
     std::string api;
     std::string device;
     std::string detail;
+    std::vector<std::string> all_devices;
+    std::string all_device_versions;
 };
 
 // Probes the native compute stack without linking LAICompute to optional GPU SDKs.
