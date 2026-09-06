@@ -21,9 +21,9 @@ __kernel void matmul_f32(__global const float*a,__global const float*b,__global 
 )CLC";
 #endif
 }
-struct Engine::Impl{bool ok=false;videocore::Generation gen=videocore::Generation::Unknown;std::string detail="GPU runtime unavailable";Stats stats;
+struct Engine::Impl{bool ok=false;videocore::Generation gen=videocore::Generation::Unknown;std::string detail="GPU runtime unavailable";Stats stats;std::mutex mu;
 #if LAIC_HAVE_OPENCL
-cl_context context=nullptr;cl_command_queue queue=nullptr;cl_program program=nullptr;cl_kernel mv_f32=nullptr,mv_q4=nullptr,mv_q8=nullptr,mm_f32=nullptr;std::unordered_map<const GgufTensor*,cl_mem>buffers;cl_mem xbuf=nullptr,ybuf=nullptr,abuf=nullptr,bbuf=nullptr,cbuf=nullptr;std::size_t xcap=0,ycap=0,acap=0,bbcap=0,ccap=0;std::mutex mu;
+cl_context context=nullptr;cl_command_queue queue=nullptr;cl_program program=nullptr;cl_kernel mv_f32=nullptr,mv_q4=nullptr,mv_q8=nullptr,mm_f32=nullptr;std::unordered_map<const GgufTensor*,cl_mem>buffers;cl_mem xbuf=nullptr,ybuf=nullptr,abuf=nullptr,bbuf=nullptr,cbuf=nullptr;std::size_t xcap=0,ycap=0,acap=0,bbcap=0,ccap=0;
 #endif
 Impl(){auto d=videocore::detect();gen=d.generation;
 #if LAIC_HAVE_OPENCL
