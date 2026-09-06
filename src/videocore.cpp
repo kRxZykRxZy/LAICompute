@@ -26,9 +26,9 @@ const char* backend_name(Backend b) noexcept{return b==Backend::GPU?"GPU":b==Bac
 std::string generation_name(Generation g) noexcept{return g==Generation::IV?"VideoCore IV":g==Generation::VI?"VideoCore VI":g==Generation::VII?"VideoCore VII":"Unknown";}
 DeviceInfo detect(){
     DeviceInfo d;std::string all=cpuinfo()+read_file("/sys/firmware/devicetree/base/compatible")+read_file("/sys/firmware/devicetree/base/model");d.generation=detect_generation(all);if(d.generation==Generation::Unknown)return d;d.present=true;d.name=generation_name(d.generation);
-    if(d.generation==Generation::IV){d.qpus=12;d.clock_mhz=250;d.runtime="VC4CL / OpenCL";}
-    else if(d.generation==Generation::VI){d.qpus=8;d.clock_mhz=500;d.runtime="Mesa V3DV / Vulkan";}
-    else {d.qpus=12;d.clock_mhz=1000;d.runtime="Mesa V3DV / Vulkan";}
+    if(d.generation==Generation::IV){d.qpus=12;d.clock_mhz=250;d.runtime="VC4CL / OpenCL / QPU";}
+    else if(d.generation==Generation::VI){d.qpus=8;d.clock_mhz=500;d.runtime="Mesa V3DV / Vulkan / QPU";}
+    else {d.qpus=12;d.clock_mhz=800;d.runtime="Mesa V3DV / Vulkan / QPU";}
     d.theoretical_gflops=theoretical_peak_gflops(d);d.compute_available=runtime_available(d);return d;
 }
 double theoretical_peak_gflops(const DeviceInfo& d) noexcept{return double(d.qpus)*4.0*2.0*double(d.clock_mhz)/1000.0;}
