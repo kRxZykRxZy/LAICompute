@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 option(LAIC_ENABLE_NATIVE "Enable compiler-native CPU optimizations" ON)
 option(LAIC_BUILD_TESTS "Build tests" ON)
+find_package(Vulkan QUIET)
 add_library(laicore
     src/tensor.cpp src/tensor16.cpp src/half.cpp src/cpu.cpp src/matmul.cpp
     src/prefetch.cpp src/cache.cpp src/pipeline.cpp src/engine.cpp
@@ -12,6 +13,12 @@ add_library(laicore
     src/videocore.cpp src/videocore_runtime.cpp src/inference_v2.cpp)
 target_include_directories(laicore PUBLIC include)
 target_compile_features(laicore PUBLIC cxx_std_17)
+if(Vulkan_FOUND)
+    target_compile_definitions(laicore PRIVATE LAIC_HAVE_VULKAN=1)
+    target_link_libraries(laicore PRIVATE Vulkan::Vulkan)
+else()
+    target_compile_definitions(laicore PRIVATE LAIC_HAVE_VULKAN=0)
+endif()
 if(LAIC_ENABLE_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(laicore PRIVATE -march=native -O3 -ffast-math -fomit-frame-pointer -ftree-vectorize -ftree-slp-vectorize)
 else()
